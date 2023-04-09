@@ -1,0 +1,14 @@
+Source: plymouth-theme-bodhi-boss
+Section: x11
+Priority: optional
+Maintainer: Robert Wiley <ylee@bodhilinux.com>
+Build-Depends: debhelper (>=9), meson
+Standards-Version: 3.9.6
+Homepage: https://github.com/BodhiDev/plymouth-theme-bodhi-boss
+
+Package: plymouth-theme-bodhi-boss
+Architecture: all
+Depends: ${misc:Depends}, plymouth, plymouth-label
+Provides: plymouth-theme
+Description: Bodhi Linux Plymouth Theme
+ Default plymouth theme for Bodhi Linux BL7.

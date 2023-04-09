@@ -1,0 +1,8 @@
+[Plymouth Theme]
+Name=Bodhi Boss
+Description=Bodhi 7.0 Default theme.
+ModuleName=script
+
+[script]
+ImageDir=/usr/share/plymouth/themes/bodhi-boss
+ScriptFile=/usr/share/plymouth/themes/bodhi-boss/bodhi-boss.script

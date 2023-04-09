@@ -1,0 +1,399 @@
+#  logo.script - boot splash plugin
+# 
+#  Copyright (C) 2023 Bodhi Linux
+# 
+#  This program is free software; you can redistribute it and/or modify
+#  it under the terms of the GNU General Public License as published by
+#  the Free Software Foundation; either version 2, or (at your option)
+#  any later version.
+# 
+#  This program is distributed in the hope that it will be useful,
+#  but WITHOUT ANY WARRANTY; without even the implied warranty of
+#  MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+#  GNU General Public License for more details.
+# 
+#  You should have received a copy of the GNU General Public License
+#  along with this program; if not, write to the Free Software
+#  Foundation, Inc., 59 Temple Place - Suite 330, Boston, MA
+#  02111-1307, USA.
+# 
+# Re-written by Robert Wiley <ylee@bodhilinux.com> based on the
+#  original by Mad Nick <dr.madnick@gmail.com>
+#
+
+
+## -----------------------------Screen Stuff----------------------------
+
+// Black Background
+Window.SetBackgroundTopColor(0, 0, 0);
+Window.SetBackgroundBottomColor(0.1, 0.1, 0.1);
+
+screen.width = Window.GetWidth();
+screen.height = Window.GetHeight();
+screen.ratio = screen.height / screen.width;
+screen.x = Window.GetX();
+screen.y = Window.GetY();
+
+## -----------------------------Images ---------------------------------
+
+background.image = Image("wallpaper.png");
+background.height = background.image.GetHeight();
+background.width = background.image.GetWidth();
+background.ratio = background.height / background.width;
+password_dialog.image = Image("passw-dialog.png");
+star.image = Image("test.png");
+
+distro = Image("logo.png");
+progress_indicator.image = Image("progress-meter.png");
+progress_fade.image = Image("fsck-fade.png");
+
+logo.image = distro.Scale(distro.GetWidth() * 0.36, distro.GetHeight() * 0.39);
+logo.width = logo.image.GetWidth ();
+logo.height = logo.image.GetHeight ();
+logo.x = screen.x + (screen.width / 2) - (logo.width / 2);
+logo.y = screen.y + (screen.height / 2) - (logo.height / 2);
+
+## ----------------------------- Sprites -------------------------------
+
+if (screen.ratio > background.ratio)
+	factor = screen.height / background.height;
+else
+	factor = screen.width / background.width;
+
+scaled = background.image.Scale(background.width * factor, background.height * factor);
+background.sprite = Sprite(scaled);
+background.sprite.SetX(screen.x + screen.width / 2 - scaled.GetWidth() / 2);
+background.sprite.SetY(screen.y + screen.height / 2 - scaled.GetHeight() / 2);
+
+logo.sprite = Sprite ();
+logo.sprite.SetImage (logo.image);
+logo.sprite.SetPosition(logo.x, logo.y);
+logo.sprite.SetOpacity (1); // not needed, useful for debugging
+
+progress_indicator.sprite = Sprite(progress_indicator.image);
+progress_indicator.sprite.SetPosition(screen.x + (screen.width / 2) - (progress_indicator.image.GetWidth() / 2), screen.y + (screen.height / 2) + (logo.height / 2) + 25);
+progress_indicator.sprite.SetOpacity(0);
+
+progress_fade.sprite = Sprite(progress_fade.image.Scale(1, progress_fade.image.GetHeight()));
+progress_fade.sprite.SetPosition(screen.x + (screen.width / 2) - (progress_indicator.image.GetWidth() / 2), screen.y + (screen.height / 2) + (logo.image.GetHeight() / 2) + 25);
+progress_fade.sprite.SetOpacity(0);
+
+password_dialog.sprite = Sprite(password_dialog.image);
+password_dialog.sprite.SetPosition(screen.x + (screen.width / 2) - (password_dialog.image.GetWidth() / 2), screen.y + (screen.height / 2) + (logo.height / 2) + 70);
+password_dialog.sprite.SetOpacity(0);
+
+password_label.sprite = Sprite();
+password_label.sprite.SetOpacity(0);
+
+msg_label_sprite = Sprite();
+
+# General purpose function to create text
+# Set the text color in (rgb / 256)
+text_color.red = 1.0;
+text_color.green = 1.0;
+text_color.blue = 1.0;
+text_color.alpha = 1.0;
+
+fun WriteText (text, color) {
+	image = Image.Text (text, color.red, color.green, color.blue);
+	return image;
+}
+
+## -----------------------------Debug functions-------------------------
+
+debug = 0;
+debug_sprite = Sprite();
+debugsprite_medium = Sprite();
+
+fun Debug(str) {
+	/* This will print to the top left corner */
+	# debug_sprite.SetImage(WriteText(str, text_color));
+	debug_sprite.SetImage(Image.Text(str, 1.0, 1.0, 1.0));
+}
+
+fun DebugMedium(str) {
+    debugsprite_medium.SetImage(Image.Text(str, 1.0, 1.0, 1.0));
+    debugsprite_medium.SetPosition(0, (Window.GetHeight (0) - 60), 1);
+}
+
+## -----------------------------String functions------------------------
+
+//  numbers up to 100 is all thats needed for the progress meter bar
+fun StringToInt(str) {
+	int = -1;
+
+	for (i = 0; i <= 100; i++) {
+		if (i + "" == str) {
+			int = i;
+			break;
+		}
+	}
+	return int;
+}
+
+## -----------------------------Misc Globals----------------------------
+
+counter = 0;
+spin = 0;
+
+fade_pos_x = (screen.width / 2) - (progress_indicator.image.GetWidth() / 2);
+fade_dir = 0; /* 0 = right, 1 = left */
+
+fsck_running = 0;
+fsck_dev_array;
+fsck_dev_counter = 0;
+fsck_fade_in_counter = 0;
+fsck_done_fading = 0;
+
+stars_array;
+stars_n = 0;
+msgs_line = [NULL,NULL,NULL,NULL,NULL];
+
+## ----------------------------------------Refresh stuff ----------------
+#
+# Calling Plymouth.SetRefreshFunction with a function will set that function to be
+# called up to 50 times every second, e.g.
+#
+# NOTE: if a refresh function is not set, Plymouth will not update
+#       the screen correctly
+
+spinner_sprite;
+spinner;
+
+fun refreshHandler(){
+
+	if (spin < 3.14 * 2)
+		spin = spin + 0.1;
+	else
+		spin = 0;
+
+	/* if fsck is running or the password is prompted, hide the spinner */
+	if (fsck_running == 1 || password_dialog.sprite.GetOpacity() == 1)
+		spinner_sprite.SetOpacity(0);
+	else {
+		spinner = Image("spinner.png");
+		spinner = spinner.Rotate(spin);
+		spinner_sprite = Sprite(spinner);
+		spinner_sprite.SetPosition(screen.x + (screen.width / 2) - (spinner.GetWidth() / 2), screen.y + (screen.height / 2) - (spinner.GetHeight() / 2) + 80);
+		spinner_sprite.sprite.SetOpacity (1);
+	}
+
+	if (fade_dir == 0) {
+		counter++;
+		if (counter >= 200)
+			fade_dir = 1;
+	}
+	else {
+		counter--;
+		if (counter <= 0)
+			fade_dir = 0;
+	}
+
+	if ((fsck_running == 1) && (fsck_done_fading == 0)) {
+		progress_indicator.sprite.SetOpacity(fsck_fade_in_counter);
+		progress_fade.sprite.SetOpacity(fsck_fade_in_counter);
+
+		if (fsck_fade_in_counter < 1)
+			fsck_fade_in_counter+= 0.025;
+		else
+			fsck_done_fading = 1;
+	}
+}
+
+PlymouthSetRefreshFunction (refreshHandler);
+
+## -----------------------------Password Dialog ------------------------
+
+# The callback function is called when the display should display a password dialog.
+# First arg is prompt string, the second is the number of stars, ie char typed
+
+fun showPasswordHandler(prompt, stars) {
+
+	if (password_dialog.sprite.GetOpacity() == 0 && password_label.sprite.GetOpacity() == 0) {
+		spinner_sprite.SetOpacity(0);
+		password_dialog.sprite.SetOpacity(1);
+		password_label.sprite.SetOpacity(1);
+	}
+
+	prompt_image = Image.Text(prompt, 1, 1, 1);
+
+	password_label.sprite.SetImage(prompt_image);
+	password_label.sprite.SetPosition(screen.x + (screen.width / 2) - (prompt_image.GetWidth() / 2), screen.y + (screen.height / 2) + (logo.height / 2) + 50);
+
+	for(i = 0; i < stars_n; i++)  {
+		stars_array[i] = NULL;
+	}
+
+	stars_n = 0;
+	for(i = 0; (i < stars) && (i < 15); i++) {
+		stars_array[i] = Sprite(star.image);
+		stars_array[i].SetPosition(screen.x + (((screen.width / 2) - (password_dialog.image.GetWidth() / 2)) + (18 * i)) + 4, screen.y + (screen.height / 2) + (logo.height / 2) + 75);
+		stars_n++;
+	}
+}
+
+Plymouth.SetDisplayPasswordFunction(showPasswordHandler);
+
+## ---------------------------------------Display Normal stuff ---------
+#
+# The callback function is called when the display should return to normal
+
+fun displayNormalHandler() {
+	/* Hide the password dialog and the stars */
+	if (password_dialog.sprite.GetOpacity() == 1)
+		password_dialog.sprite.SetOpacity(0);
+	if (password_label.sprite.GetOpacity() == 1)
+		password_label.sprite.SetOpacity(0);
+	for(i = 0; i < stars_n; i++) {
+		stars_array[i] = NULL;
+	}
+}
+
+Plymouth.SetDisplayNormalFunction(displayNormalHandler);
+
+#---------------------------------------- Message Function -------------
+#
+# The callback function is called when the display should return to normal
+
+fun messageHandler(msg) {
+
+	is_fake = 0;
+	if (!msg || (msg == "")) is_fake = 1;
+	if (is_fake) {
+		/* Doesn't work right on ISO unless we do something here */
+		Debug(" ");
+	}
+    else {
+		if (msg.SubString(0, 5) == "keys:")
+			msg = msg.SubString(5, StringLength(msg));
+
+		# Get the message without the "fsckd-cancel-msg" prefix as we don't support i18n
+		if (msg.SubString(0, 17) == "fsckd-cancel-msg:")
+			msg = msg.SubString(17, StringLength(msg));
+
+		for(i = 4; i > 0; i--) {
+			msgs_line[i] = msgs_line[i - 1];
+		}
+
+		msgs_line[0] = Sprite(WriteText(msg, text_color));
+		dist = 1;
+
+		for(i = 0; i < 5; i++) {
+			if (msgs_line[i] != NULL) {
+				msgs_line[i].SetPosition(screen.x + (screen.width / 2) - (msgs_line[i].GetImage().GetWidth() / 2), screen.y + (screen.height - msgs_line[i].GetImage().GetHeight()) - 20*dist);
+				dist++;
+			}
+		}
+	}
+}
+
+Plymouth.SetMessageFunction(messageHandler);
+
+## --------------------------------------- Status Callback -------------
+
+/* Handles the updates passed to the plymouth daemon
+ * for example the FSCK data */
+ 
+fun statusHandler(status) {
+
+	if (!status) return;
+	tmp_char;
+	status_array[0] = "";
+	elem_count = 0;
+
+	
+	for (i = 0; String(status).CharAt(i) != ""; i++) {
+
+		tmp_char = String(status).CharAt(i);
+
+		if (tmp_char != ":")
+			status_array[elem_count] += tmp_char;
+		else {
+			elem_count++;
+			status_array[elem_count] = "";
+		}
+	}
+
+	if (status_array[0] == "fsck") {
+
+		already_added = 0;
+		if (fsck_running == 0) {
+			/*
+			 * use the dedicated message handler for this
+			 * since there is no messages about fsck checks
+			 * currently... */
+			messageHandler("Routine disk drive check.");
+			fsck_running = 1;
+		}
+
+		for(i = 0; i < fsck_dev_counter; i++) {
+
+			/*
+			 * check if the device already exist and update
+			 * the progress only in that case */
+			if (fsck_dev_array[i][0] == status_array[1]) {
+				fsck_dev_array[i][1] = status_array[2]; /* progress */
+				already_added = 1;
+			}
+		}
+
+		/*
+		 * if the device is not added, then add it */
+		if (already_added == 0) {
+			fsck_dev_array[fsck_dev_counter][0] = status_array[1]; /* device */
+			fsck_dev_array[fsck_dev_counter][1] = status_array[2]; /* progress */
+			fsck_dev_counter++;
+		}
+
+		/*
+		 * update the progress */
+		total = 0;
+
+		for(i = 0; i < fsck_dev_counter; i++) {
+			total += StringToInt(fsck_dev_array[i][1]);
+		}
+
+		if (fsck_dev_counter > 0) {
+			/*
+			*  display the total percentage */
+			progress_fade.sprite.SetImage(progress_fade.image.Scale((progress_indicator.image.GetWidth() / 100) * (total / fsck_dev_counter), progress_indicator.image.GetHeight()));
+			progress_fade.sprite.SetOpacity(1);
+		}
+
+		/*
+		 * if the total progress is at maximum,
+		 * make the progress meter go away,
+		 * we might want to fade this out... */
+		if (total == (100 * fsck_dev_counter)) {
+			progress_indicator.sprite.SetOpacity(0);
+			progress_fade.sprite.SetOpacity(0);
+		}
+	}
+
+	# systemd-fsckd pass fsckd:<number_devices>:<progress>:<l10n_string>
+	if (status_array[0] == "fsckd") {
+		fsck_running = 1;
+
+		# remove ",x" as we only care about integers
+		progress_str = status_array[2];
+		progress = StringToInt(progress_str.SubString(0, StringToInt(progress_str) - 2));
+
+		progress_fade.sprite.SetImage(progress_indicator.image.Scale((progress_indicator.image.GetWidth() / 100) * progress, progress_fade.image.GetHeight()));
+
+		/*
+		 * if the total progress is at maximum,
+		 * make the progress meter go away,
+		 * we might want to fade this out... */
+		if (progress == 100) {
+			progress_indicator.sprite.SetOpacity(0);
+			progress_fade.sprite.SetOpacity(0);
+		}
+	}
+}
+
+Plymouth.SetUpdateStatusFunction(statusHandler);
+
+## --------------------------------------- Quit ------------------------
+
+// Nothing special to do here really so not implemented
+
