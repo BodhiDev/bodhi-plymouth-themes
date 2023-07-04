@@ -2,6 +2,10 @@ Format: https://www.debian.org/doc/packaging-manuals/copyright-format/1.0/
 Upstream-Name: plymouth-theme-bodhi-boss
 Source: https://github.com/BodhiDev/plymouth-theme-bodhi-boss
 
+Files: scr/logo.png
+Copyright: 2023 MissTell
+License: GPL-3.0+
+
 Files: *
 Copyright: 2023 Bodhi Linux <moksha@bodhilinux.com>
 Copyright: 2011 The Xubuntu Community

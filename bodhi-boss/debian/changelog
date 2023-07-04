@@ -1,3 +1,9 @@
+plymouth-theme-bodhi-boss (0.0.1-2) jammy; urgency=medium
+
+  * Improved Logo
+
+ -- Robert Wiley <ylee@bodhilinux.com>  Tue, 04 Jul 2023 07:08:49 -0400
+
 plymouth-theme-bodhi-boss (0.0.1-1) jammy; urgency=medium
 
   * BL7 release
